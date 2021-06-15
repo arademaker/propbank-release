@@ -1,0 +1,293 @@
+
+* download LDC data
+
+Download the ontonotes from https://catalog.ldc.upenn.edu/LDC2013T19
+and expand it into the =ontonotes-release-5.0= directory inside the
+directory where you cloned
+https://github.com/propbank/propbank-release.
+
+* execute CoreNLP
+
+execute the CoreNLP for convert the `parse` files to ConLL-U
+
+#+BEGIN_SRC bash
+  CP="/Users/ar/work/stanford-corenlp-4.0.0/*"
+  CL=edu.stanford.nlp.trees.ud.UniversalDependenciesConverter
+  for f in `find ontonotes-release-5.0/data/files/data/english -name '*.parse'`; do 
+      echo $f;
+      OUT=$(dirname $f)/$(basename $f .parse).conllu
+      java -cp $CP -Dfile.encoding=UTF-8 $CL -encoding UTF-8 -treeFile $f > $OUT;
+  done
+#+END_SRC
+
+* convert the `gold_conll` from propbank to `gold_conllu` (valid conllu files)
+
+#+BEGIN_SRC bash
+for f in `find data/ontonotes -name "*.gold_conll"`; do 
+ echo $f;
+ awk -f src/conll-to-conllu.awk $f > ${f}u; 
+done
+#+END_SRC
+
+* align the files from propbank and LDC
+
+#+BEGIN_SRC bash
+find ontonotes-release-5.0 -name '*.conllu' | sort  > src/onto-list
+find data/ontonotes -name '*.gold_conll' | sort > src/propbank-list
+src/merge src/onto-list src/propbank-list > src/merge.log
+awk '$3 != "-" {printf "mv %s/%s.conllu %s/%s.conllu\n", $2, $1, $3, $1}' src/merge.log > src/merge.sh
+rm src/merge.log
+sh src/merge.sh
+#+END_SRC
+
+* merging files with SRL and dependencies into a new `merged_conllu` file
+
+#+BEGIN_SRC bash :results output
+  sbcl --load src/merge.lisp --eval '(merge-pb::run)' --eval '(sb-ext:quit)'
+#+END_SRC
+
+#+BEGIN_EXAMPLE
+This is SBCL 2.0.7, an implementation of ANSI Common Lisp.
+More information about SBCL is available at <http://www.sbcl.org/>.
+
+SBCL is free software, provided as is, with absolutely no warranty.
+It is mostly in the public domain; some portions are provided under
+BSD-style licenses.  See the CREDITS and COPYING files in the
+distribution for more information.
+error: one invalid sentence in /Users/ar/work/propbank/propbank-release/data/ontonotes/bc/msnbc/00/msnbc_0001.conllu
+error: one invalid sentence in /Users/ar/work/propbank/propbank-release/data/ontonotes/bc/p2.5_a2e/00/p2.5_a2e_0011.conllu
+error: one invalid sentence in /Users/ar/work/propbank/propbank-release/data/ontonotes/bn/cnn/04/cnn_0432.conllu
+error: one invalid sentence in /Users/ar/work/propbank/propbank-release/data/ontonotes/tc/ch/00/ch_0004.conllu
+error: one invalid sentence in /Users/ar/work/propbank/propbank-release/data/ontonotes/tc/ch/00/ch_0005.conllu
+error: one invalid sentence in /Users/ar/work/propbank/propbank-release/data/ontonotes/tc/ch/00/ch_0016.conllu
+error: one invalid sentence in /Users/ar/work/propbank/propbank-release/data/ontonotes/tc/ch/00/ch_0024.conllu
+#+END_EXAMPLE
+
+* convert the `merged_conllu` to `merged_conll` 
+
+The .merged_conll files contains a variable number of columns. The
+first 10 columns are the UD format documented in 
+https://universaldependencies.org/format.html 
+
+Besides the original 10 columns from the CoNLL-U format, the roleset
+column (column 11) gives the actual sense used, and that sense
+provides roleset specific meanings for each of the numbered
+arguments. Every column after the eleventh is a predicate, in order
+that they appear in the sentence. Note that the Propbank .gold_conll
+files contain a "frame file" column (column 11) that lets you know
+which ".xml" file contains the actual semantic form for the predicate
+in question (which is not always the same as the predicate: one must
+reference "lighten.xml" for lighten_up.02), but since all predicate
+identifier is unique, we haven't preserved this column.
+
+#+BEGIN_SRC bash
+for f in `find data/ontonotes -name "*.merged_conllu"`; do 
+ echo $f;
+ BP=$(dirname $f)/$(basename $f .merged_conllu)
+ awk -f src/conllu-to-conll.awk $f > $BP.tmp; 
+ awk -f src/short-argument.awk $BP.tmp > $BP.merged_conll; 
+ rm $BP.tmp
+done
+#+END_SRC
+
+* validation using ud-tools
+
+#+BEGIN_SRC bash
+  for f in `find data/ontonotes -name "*.merged_conllu"`; do 
+      cat $f | python3 ~/work/ud-tools/validate.py --lang en --max-err=0 2> $(dirname $f)/$(basename $f .merged_conllu).report;
+  done
+#+END_SRC
+
+* problems
+
+The current `merged_conll` don't have the untokenized original
+texts. That could be recovered with extra work using the original
+OntoNotes distribution ONF files. For instance, note the extra space
+before the comma and dot below:
+
+: The construction of Hong Kong Disneyland began two years ago , in 2003 .
+
+Many errors reported by the UD validation tool:
+
+#+BEGIN_SRC bash :results output
+  find ../data/ontonotes -name '*.report' | xargs awk -F ":" '$0 ~ /Line/ {print $2}' | sort | uniq -c | sort -nr  | head -15
+#+END_SRC
+
+#+begin_example
+41505  [L3 Syntax rel-upos-cop] 'cop' should be 'AUX' or 'PRON'/'DET' but it is 'VERB'
+1780  [L3 Syntax rel-upos-advmod] 'advmod' should be 'ADV' but it is 'ADP'
+ 780  [L3 Syntax right-to-left-conj] Relation 'conj' must go left-to-right.
+ 568  [L3 Syntax rel-upos-aux] 'aux' should be 'AUX' but it is 'VERB'
+ 489  [L3 Syntax rel-upos-punct] 'punct' must be 'PUNCT' but it is 'SYM'
+ 320  [L3 Syntax rel-upos-nummod] 'nummod' should be 'NUM' but it is 'DET'
+ 304  [L3 Syntax rel-upos-nummod] 'nummod' should be 'NUM' but it is 'ADJ'
+ 234  [L3 Syntax rel-upos-advmod] 'advmod' should be 'ADV' but it is 'X'
+ 208  [L3 Syntax rel-upos-cc] 'cc' should not be 'DET'
+ 175  [L3 Syntax rel-upos-advmod] 'advmod' should be 'ADV' but it is 'NOUN'
+ 136  [L3 Syntax upos-rel-punct] 'PUNCT' must be 'punct' but it is 'conj'
+  63  [L3 Syntax rel-upos-case] 'case' should not be 'ADJ'
+  61  [L3 Syntax rel-upos-nummod] 'nummod' should be 'NUM' but it is 'ADV'
+  48  [L3 Syntax rel-upos-mark] 'mark' should not be 'DET'
+  46  [L3 Syntax right-to-left-appos] Relation 'appos' must go left-to-right.
+#+end_example
+
+I found many strange punctuations:
+
+#+BEGIN_SRC bash :results output
+  find ../data/ontonotes -name '*.merged_conllu' | xargs awk '$4 ~ /PUNCT/ {print $2,$3}' | sort | uniq -c | sort -nr 
+#+END_SRC
+
+#+begin_example
+115058 , ,
+107972 . .
+19074 - -
+11298 `` ``
+10654 '' ''
+9484 /. /.
+7558 " "
+5085 ? ?
+4448 -- --
+3945 : :
+3122 ) )
+3090 ( (
+2425 ; ;
+1786 ' '
+1702 ! !
+1010 /? /?
+ 472 ... ...
+ 326 /- /-
+ 188 -RCB- -rcb-
+ 185 -LCB- -lcb-
+ 150 .. ..
+ 132 ` `
+ 130 / /
+ 104 -RSB- -rsb-
+ 101 -LSB- -lsb-
+  37 * *
+  37 !! !!
+  27 .... ....
+  12 ?? ??
+  10 ] ]
+  10 ??? ???
+  10 --- ---
+   9 [ [
+   9 !!! !!!
+   8 ..... .....
+   8 **** ****
+   6 ~~~ ~~~
+   6 ?! ?!
+   5 ...... ......
+   5 ** **
+   5 !? !?
+   5 !!!! !!!!
+   4 ................... ...................
+   4 ..! ..!
+   4 *** ***
+   4 !. !.
+   3 ;. ;.
+   3 ..? ..?
+   3 ....... .......
+   3 ...! ...!
+   3 ------ ------
+   3 !!? !!?
+   2 ~~~~~~~~~~~~ ~~~~~~~~~~~~
+   2 ~ ~
+   2 ------------------------------ ------------------------------
+   2 ------------------------- -------------------------
+   2 ------------------------ ------------------------
+   2 ----------------------- -----------------------
+   2 -------------- --------------
+   2 ***** *****
+   2 !!?? !!??
+   1 ： ：
+   1 ， ，
+   1 ~~~~~~~~~~~~~ ~~~~~~~~~~~~~
+   1 ~~~~~~~~~~ ~~~~~~~~~~
+   1 television television
+   1 section section
+   1 [E_S [e_s
+   1 Wa wa
+   1 One one
+   1 O o
+   1 ?@@@... ?@@@...
+   1 ??. ??.
+   1 ?... ?...
+   1 ?.. ?..
+   1 ?!. ?!.
+   1 ?!!... ?!!...
+   1 ?!!! ?!!!
+   1 ?!! ?!!
+   1 <E_S <e_s
+   1 :. :.
+   1 2 2
+   1 0. 0.
+   1 .? .?
+   1 ....? ....?
+   1 ...................... ......................
+   1 ........ ........
+   1 ..!* ..!*
+   1 ..!!. ..!!.
+   1 ..!! ..!!
+   1 .- .-
+   1 -RRB -rrb
+   1 -LRB -lrb
+   1 ------------------------------- -------------------------------
+   1 ----------------------------- -----------------------------
+   1 ------------------- -------------------
+   1 ------------------ ------------------
+   1 ----------- -----------
+   1 ,, ,,
+   1 ********* *********
+   1 "" ""
+   1 !* !*
+   1 !!. !!.
+   1 !!!!. !!!!.
+   1 !!!!!!!!!!!!!!!! !!!!!!!!!!!!!!!!
+   1 !!!!!!!! !!!!!!!!
+   1 !!!!! !!!!!
+#+end_example
+
+#+BEGIN_SRC bash
+find ../data/ontonotes -name '*.merged_conllu' | xargs awk '$4 ~ /VERB/ {split($10,a,/\|/); print $3,$4,a[2]}' | sort | uniq -c | sort -nr | head -40
+#+END_SRC
+
+| 45706 | be       | VERB | Roleset=be.01       |
+| 14554 | say      | VERB | Roleset=say.01      |
+|  6510 | have     | VERB | Roleset=have.03     |
+|  3867 | be       | VERB | Roleset=be.02       |
+|  3827 | be       | VERB | Roleset=be.03       |
+|  3708 | do       | VERB | Roleset=do.02       |
+|  3071 | know     | VERB | Roleset=know.01     |
+|  2974 | think    | VERB | Roleset=think.01    |
+|  2828 | see      | VERB | Roleset=see.01      |
+|  2765 | come     | VERB | Roleset=come.01     |
+|  2593 | want     | VERB | Roleset=want.01     |
+|  2334 | go       | VERB | Roleset=go.02       |
+|  2142 | tell     | VERB | Roleset=tell.01     |
+|  2131 | give     | VERB | Roleset=give.01     |
+|  1767 | take     | VERB | Roleset=take.01     |
+|  1734 | make     | VERB | Roleset=make.02     |
+|  1730 | use      | VERB | Roleset=use.01      |
+|  1568 | say      | VERB | Roleset=-           |
+|  1437 | get      | VERB | Roleset=get.01      |
+|  1355 | have     | VERB | Roleset=have.02     |
+|  1354 | become   | VERB | Roleset=become.01   |
+|  1297 | mean     | VERB | Roleset=mean.01     |
+|  1293 | do       | VERB | Roleset=-           |
+|  1291 | believe  | VERB | Roleset=believe.01  |
+|  1240 | try      | VERB | Roleset=try.01      |
+|  1233 | go       | VERB | Roleset=go.04       |
+|  1190 | find     | VERB | Roleset=find.01     |
+|  1149 | expect   | VERB | Roleset=expect.01   |
+|  1147 | continue | VERB | Roleset=continue.01 |
+|  1143 | sell     | VERB | Roleset=sell.01     |
+|  1141 | work     | VERB | Roleset=work.01     |
+|  1126 | need     | VERB | Roleset=need.01     |
+|  1111 | show     | VERB | Roleset=show.01     |
+|  1092 | make     | VERB | Roleset=make.LV     |
+|  1086 | begin    | VERB | Roleset=begin.01    |
+|  1084 | have     | VERB | Roleset=-           |
+|  1079 | look     | VERB | Roleset=look.01     |
+|  1070 | live     | VERB | Roleset=live.01     |
+|  1069 | make     | VERB | Roleset=make.01     |
+|  1068 | help     | VERB | Roleset=help.01     |

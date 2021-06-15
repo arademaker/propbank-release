@@ -1,0 +1,166 @@
+#+title: Ontonotes vs EWT Corpus in the Propbank data
+#+author: Alexandre Rademaker (alexrad@br.ibm.com)
+
+* data preparation
+
+In the root of the propbank-release. First we need to produce the
+ontonotes and EWT data using the map_all_to_conll.py described in the
+setup procedure. After that:
+
+#+BEGIN_SRC bash
+find data/ontonotes -name '*.gold_conll' -exec awk '{print FILENAME,$8}' {} \; > ontonotes.frames
+find data/google/ewt -name '*.gold_conll' -exec awk '{print FILENAME,$8}' {} \; > ewt.frames
+awk '{print $2}' ontonotes.frames | sort | uniq -c > ontonotes.stats
+awk '{print $2}' ewt.frames | sort | uniq -c > ewt.stats
+#+END_SRC
+
+#+RESULTS:
+
+* summary
+
+The size of the OntoNotes 5.0 corpus (English subset) is 10x the size
+of the EWT corpus. The transformation of the OntoNotes (English
+subset) can be useful for SRL trainning.
+
+* details 
+
+Number of sentences:
+
+#+BEGIN_SRC bash
+awk '$2 ~ /^[ ]*$/' ontonotes.frames | wc -l
+awk '$2 ~ /^[ ]*$/' ewt.frames | wc -l
+#+END_SRC
+
+#+RESULTS:
+| 137812 |
+|  16579 |
+
+Number of tokens:
+
+#+BEGIN_SRC bash
+awk '$2 ~ /^-$/' ontonotes.frames | wc -l
+awk '$2 ~ /^-$/' ewt.frames | wc -l
+#+END_SRC
+
+#+RESULTS:
+| 2215098 |
+|  204302 |
+
+
+TOP 100 senses with frequency difference greater than 10
+
+#+BEGIN_SRC R :results table :colnames yes
+onto <- read.table("ontonotes.stats",row.names= NULL, colClasses = c("numeric", "character"))
+names(onto) <- c("size.onto","sense")
+
+ewt <- read.table("ewt.stats",row.names= NULL, colClasses = c("numeric", "character"))
+names(ewt) <- c("size.ewt","sense")
+
+total <- merge(ewt,onto, by = "sense", all = TRUE)
+tmp <- subset(total, is.na(size.ewt) | is.na(size.onto))
+head(tmp, 100)
+#+END_SRC
+
+#+RESULTS:
+| sense           | size.ewt | size.onto |
+|-----------------+----------+-----------|
+| abandon.03      | nil      |         3 |
+| abase.01        | nil      |         1 |
+| abate.01        | nil      |        11 |
+| abbreviate.01   | nil      |         4 |
+| abdicate.01     | nil      |         3 |
+| abet.01         | nil      |         3 |
+| abhor.01        | nil      |         1 |
+| able.01         | 98       |       nil |
+| abort.01        | nil      |        74 |
+| abound.01       | nil      |         7 |
+| aboutface.03    | nil      |         1 |
+| abrade.01       | nil      |         2 |
+| abridge.01      | nil      |         2 |
+| absolve.01      | nil      |         2 |
+| abstract.01     | 1        |       nil |
+| absurd.01       | 2        |       nil |
+| abut.01         | nil      |         1 |
+| accede.01       | nil      |         3 |
+| accentuate.01   | nil      |         1 |
+| acceptable.02   | 4        |       nil |
+| accessible.02   | 3        |       nil |
+| accession.01    | nil      |         9 |
+| accessorize.01  | nil      |         1 |
+| acclaim.01      | nil      |         5 |
+| accord.01       | nil      |         5 |
+| accord.02       | nil      |        34 |
+| accredit.01     | nil      |         1 |
+| accrete.01      | nil      |         1 |
+| accrue.01       | nil      |        14 |
+| accurate.01     | 6        |       nil |
+| accustom.01     | nil      |         7 |
+| ace.01          | nil      |         1 |
+| ache.01         | nil      |         6 |
+| achieve.LV      | nil      |         6 |
+| acidify.01      | nil      |         1 |
+| acquaint.01     | nil      |         3 |
+| acquiesce.01    | nil      |         2 |
+| acquit.01       | nil      |         9 |
+| activity.06     | 7        |       nil |
+| actualize.01    | nil      |         1 |
+| add.03          | nil      |        32 |
+| address.03      | nil      |        22 |
+| adequate.01     | 1        |       nil |
+| adhere.01       | 1        |       nil |
+| adjoin.01       | 1        |       nil |
+| adjourn.01      | nil      |         5 |
+| administrate.01 | nil      |         2 |
+| admonish.01     | nil      |         1 |
+| adorable.02     | 1        |       nil |
+| adore.01        | nil      |         5 |
+| adulterate.01   | 1        |       nil |
+| advanced.02     | 1        |       nil |
+| adventure.01    | 4        |       nil |
+| adventurous.02  | 1        |       nil |
+| advocate.01     | nil      |        40 |
+| affair.01       | 1        |       nil |
+| affection.01    | 3        |       nil |
+| affiliate.01    | nil      |        24 |
+| affix.01        | nil      |         1 |
+| affordable.03   | 3        |       nil |
+| affuse.01       | nil      |         1 |
+| aggregate.01    | 1        |       nil |
+| aggress.01      | 3        |       nil |
+| agitate.01      | nil      |         8 |
+| agonize.01      | nil      |         1 |
+| agreeable.02    | 1        |       nil |
+| ail.01          | nil      |         8 |
+| air.01          | nil      |        37 |
+| akin.01         | 1        |       nil |
+| alarm.01        | nil      |         7 |
+| alike.05        | 5        |       nil |
+| allay.01        | nil      |         6 |
+| alleviate.01    | nil      |        18 |
+| allow.03        | nil      |         2 |
+| allude.01       | nil      |         4 |
+| alone.01        | 6        |       nil |
+| alright.01      | 3        |       nil |
+| altercation.01  | nil      |         1 |
+| alternate.01    | nil      |         7 |
+| amalgamate.01   | nil      |         4 |
+| amass.01        | nil      |         9 |
+| amble.01        | nil      |         1 |
+| ambush.01       | nil      |        13 |
+| americanize.01  | nil      |         1 |
+| amortize.01     | nil      |         2 |
+| amount.01       | nil      |        29 |
+| amount.02       | nil      |        20 |
+| amputate.01     | nil      |         4 |
+| amuse.01        | nil      |         6 |
+| anchor.01       | nil      |         4 |
+| angle.01        | nil      |         1 |
+| anguish.01      | nil      |         1 |
+| annex.01        | 2        |       nil |
+| annihilate.01   | nil      |         5 |
+| annotate.01     | 2        |       nil |
+| annualize.01    | nil      |         1 |
+| annul.01        | nil      |         2 |
+| anoint.01       | nil      |         2 |
+| antagonize.01   | nil      |         4 |
+| anxious.02      | 1        |       nil |
